@@ -48,12 +48,21 @@ def _safe_relpath(value: str, what: str) -> str:
     return path.as_posix().rstrip("/") if path.as_posix() != "." else "."
 
 
+def _patterns(table: dict[str, Any], key: str) -> list[str]:
+    value = table.get(key, [])
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise MakepatchError(f"[tool.makepatch.source] {key} must be a list of gitignore-style patterns")
+    return value
+
+
 @dataclass
 class SourceConfig:
     root: Path
     upstream: str
     ref: str
     include: dict[str, str] = field(default_factory=dict)
+    exclude: list[str] = field(default_factory=list)
+    work_exclude: list[str] = field(default_factory=list)
     work_dir: Path = Path()
     patches_dir: Path = Path()
 
@@ -86,6 +95,8 @@ class SourceConfig:
         if not isinstance(include, dict) or not all(isinstance(v, str) for v in include.values()):
             raise MakepatchError("[tool.makepatch.source] include must map upstream paths to wheel paths")
         include = {_safe_relpath(k, "include key"): _safe_relpath(v, "include value") for k, v in include.items()}
+        exclude = _patterns(src, "exclude")
+        work_exclude = _patterns(src, "work-exclude")
         # A local path upstream is resolved against the project root.
         if not re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", upstream) and not re.match(r"^[^/]+@[^/]+:", upstream):
             upstream = str((root / upstream).resolve())
@@ -94,6 +105,8 @@ class SourceConfig:
             upstream=upstream,
             ref=ref,
             include=include,
+            exclude=exclude,
+            work_exclude=work_exclude,
             work_dir=root / _safe_relpath(src.get("work-dir", "work"), "work-dir"),
             patches_dir=root / _safe_relpath(src.get("patches-dir", "patches"), "patches-dir"),
         )

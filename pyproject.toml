@@ -36,3 +36,8 @@ packages = ["src/makepatch"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.uv]
+# Rebuild when the sources change while makepatch is used as a path dependency
+# (e.g. as a build requirement of a fork during development).
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.py" }, { file = "src/*.pth" }]

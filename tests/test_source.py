@@ -131,3 +131,57 @@ def test_offline_uses_cache(tmp_path, upstream):
     workspace.materialize(cfg, tmp_path / "offline", offline=True)
     # A failed fetch falls back to the pinned ref as well.
     workspace.materialize(cfg, tmp_path / "fallback")
+
+
+def test_sparse_patterns(tmp_path, upstream):
+    repo, commit = upstream
+    project = fork_project(
+        tmp_path, repo, commit,
+        source_extra='work-exclude = ["docs/", "*.pyc", "!keep.pyc", "# comment", ""]',
+    )
+    assert workspace.sparse_patterns(SourceConfig.load(project)) == "/*\n!docs/\n!*.pyc\nkeep.pyc\n"
+
+
+def test_work_exclude(tmp_path, upstream):
+    repo, commit = upstream
+    extra = 'work-exclude = ["docs/", "src/demo/util.py"]'
+    project = fork_project(tmp_path, repo, commit, source_extra=extra)
+    cfg = SourceConfig.load(project)
+    work = workspace.setup(cfg)
+    assert not (work / "docs").exists()
+    assert not (work / "src/demo/util.py").exists()
+    assert (work / "src/demo/__init__.py").is_file()
+    assert (work / "README").is_file()
+    assert git("status", "--porcelain", cwd=work) == ""
+
+    write(work / "src/demo/__init__.py", "X = 1\n")
+    workspace.fixup(cfg)
+    workspace.rebuild(cfg)
+    assert sorted(p.relative_to(cfg.source_patches).as_posix() for p in cfg.source_patches.rglob("*.patch")) == [
+        "src/demo/__init__.py.patch"
+    ]
+
+    # Changing the patterns and running setup again updates the work tree.
+    toml = project / "pyproject.toml"
+    toml.write_text(toml.read_text().replace(extra, 'work-exclude = ["README"]'))
+    cfg = SourceConfig.load(project)
+    workspace.setup(cfg)
+    assert (work / "docs/index.md").is_file()
+    assert (work / "src/demo/util.py").is_file()
+    assert not (work / "README").exists()
+    assert (work / "src/demo/__init__.py").read_text() == "X = 1\n"
+
+
+def test_patch_on_work_excluded_file_is_an_error(tmp_path, upstream):
+    repo, commit = upstream
+    project = fork_project(tmp_path, repo, commit)
+    cfg = SourceConfig.load(project)
+    work = workspace.setup(cfg)
+    write(work / "src/demo/util.py", "X = 1\n")
+    workspace.fixup(cfg)
+    workspace.rebuild(cfg)
+
+    toml = project / "pyproject.toml"
+    toml.write_text(toml.read_text().replace('include = {', 'work-exclude = ["util.py"]\ninclude = {'))
+    with pytest.raises(MakepatchError, match=r"src/demo/util.py \(patched by util.py.patch\)"):
+        workspace.setup(SourceConfig.load(project))

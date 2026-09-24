@@ -38,6 +38,8 @@ dependencies = ["urllib3>=1.21.1,<3", "idna>=2.5,<4", "charset_normalizer>=2,<4"
 upstream = "https://github.com/psf/requests.git"
 ref = "v2.32.3"                           # 커밋 SHA(40자리) 권장, 태그·브랜치 가능
 include = { "src/requests" = "requests" } # upstream 경로 → wheel 경로
+exclude = ["**/*.pyi"]                    # sdist/wheel에서 제외 (include 경로 기준)
+work-exclude = ["docs/", "tests/"]        # work/·빌드 트리에서 제외 (upstream 루트 기준)
 # work-dir = "work"                       # 기본값
 # patches-dir = "patches"                 # 기본값
 
@@ -48,6 +50,18 @@ bypass-selection = true
 ```
 
 `.gitignore`에는 `work/`와 `.makepatch/`를 추가하십시오. sdist에서 제외하기 위해서입니다.
+
+### 파일 제외
+
+두 옵션 모두 gitignore 문법(`!` 부정 포함)을 사용하지만, 기준 경로와 효과가 다릅니다.
+
+| 옵션 | 기준 경로 | 효과 |
+| --- | --- | --- |
+| `exclude` | 각 `include` 경로 (예: `src/requests`) | sdist와 wheel에서 제외합니다. `work/`에는 그대로 있습니다. |
+| `work-exclude` | upstream 루트 | `git sparse-checkout`으로 `work/`와 빌드 트리에 체크아웃하지 않습니다. 시간과 용량을 줄이는 용도입니다. |
+
+- `work-exclude`로 제외한 파일에 패치가 있으면 `makepatch src setup`과 빌드가 오류로 중단됩니다.
+- `work-exclude`를 바꾼 뒤에는 `makepatch src setup`을 다시 실행하십시오.
 
 ### 작업 흐름
 
@@ -116,7 +130,7 @@ uv run makepatch pkg revert requests   # 원본 파일로 복원
 
 ## Vercel 빌드에서 사용
 
-Vercel 빌드 이미지는 Amazon Linux 2023 기반입니다. 빌드 이미지 문서에는 git과 uv의 사전 설치 여부가 명시되어 있지 않습니다. 없다면 Install Command에서 설치하십시오(예: `dnf install -y git`). 빌드 단계에서는 시작 훅에 의존하지 말고, 설치 직후 `pkg apply`를 명시적으로 실행하는 것을 권장합니다. 적용에 실패하면 종료 코드 1로 빌드가 중단됩니다.
+Vercel 빌드 이미지는 Amazon Linux 2023 기반입니다. `git`은 사전 설치 패키지 목록에 있지만, `uv`는 목록에 없으므로 별도 설치가 필요할 수 있습니다. 빌드 단계에서는 시작 훅에 의존하지 말고, 설치 직후 `pkg apply`를 명시적으로 실행하는 것을 권장합니다. 적용에 실패하면 종료 코드 1로 빌드가 중단됩니다.
 
 ```json
 {

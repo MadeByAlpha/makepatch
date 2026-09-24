@@ -47,13 +47,15 @@ def upstream(tmp_path: Path) -> tuple[Path, str]:
     write(repo / "src" / "demo" / "__init__.py", 'GREETING = "hello"\n\n\ndef greet(name):\n    return f"{GREETING}, {name}"\n')
     write(repo / "src" / "demo" / "util.py", "def add(a, b):\n    return a + b\n")
     write(repo / "README", "upstream readme\n")
+    write(repo / "docs" / "index.md", "# docs\n")
+    write(repo / "src" / "demo" / "tests" / "test_util.py", "def test():\n    pass\n")
     git("add", "-A", cwd=repo)
     git("commit", "-q", "-m", "initial", cwd=repo)
     git("tag", "v1.0", cwd=repo)
     return repo, git("rev-parse", "HEAD", cwd=repo).strip()
 
 
-def fork_project(tmp_path: Path, upstream_repo: Path, ref: str, name: str = "fork") -> Path:
+def fork_project(tmp_path: Path, upstream_repo: Path, ref: str, name: str = "fork", source_extra: str = "") -> Path:
     project = tmp_path / name
     project.mkdir()
     write(
@@ -71,6 +73,7 @@ version = "1.0.post1"
 upstream = "{upstream_repo.as_uri()}"
 ref = "{ref}"
 include = {{ "src/demo" = "demo" }}
+{source_extra}
 
 [tool.hatch.build.hooks.makepatch]
 

@@ -7,6 +7,9 @@ live in ``[tool.makepatch.source]``.
   that building a wheel from the sdist needs neither git history nor network.
 * wheel: the paths of ``include`` are mapped from the patched tree into the
   wheel.
+
+Files matching ``exclude`` (gitignore syntax, relative to each ``include``
+path) are left out of both.
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ from __future__ import annotations
 import os
 import shutil
 from pathlib import Path
+from typing import Iterator
 
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
@@ -47,12 +51,32 @@ class MakepatchBuildHook(BuildHookInterface):
             path = tree / src
             if not path.exists():
                 raise MakepatchError(f"include path {src!r} does not exist in the patched upstream tree")
-            if self.target_name == "sdist":
-                force_include[str(path)] = f"{SDIST_TREE}/{src}"
-            else:
-                force_include[str(path)] = dst
+            prefix = f"{SDIST_TREE}/{src}" if self.target_name == "sdist" else dst
+            for file, rel in _files(path, cfg.exclude):
+                force_include[str(file)] = f"{prefix}/{rel}" if rel else prefix
 
     def clean(self, versions: list[str]) -> None:
         build = Path(self.root) / ".makepatch" / "build"
         if build.is_dir():
             shutil.rmtree(build)
+
+
+def _files(path: Path, exclude: list[str]) -> Iterator[tuple[Path, str]]:
+    """Yield (file, path relative to ``path``) for files not excluded.
+
+    For a single-file include the relative path is empty and the file name
+    is matched against the patterns.
+    """
+    from pathspec import GitIgnoreSpec  # a dependency of hatchling
+
+    spec = GitIgnoreSpec.from_lines(exclude)
+    if path.is_file():
+        if not spec.match_file(path.name):
+            yield path, ""
+        return
+    for file in sorted(path.rglob("*")):
+        rel = file.relative_to(path).as_posix()
+        if ".git" in file.relative_to(path).parts or not file.is_file():
+            continue
+        if not spec.match_file(rel):
+            yield file, rel

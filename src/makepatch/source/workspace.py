@@ -74,17 +74,19 @@ def setup(cfg: SourceConfig, work: Path | None = None, *, offline: bool = False,
         git.run(["init", "--quiet"], work)
 
     git.run(["fetch", "--no-tags", "--quiet", str(cache), commit], work)
+    _configure_sparse(cfg, work)
     git.run(["checkout", "--quiet", "--force", "-B", BRANCH, commit], work)
     git.run(["clean", "-fdxq"], work)
     git.run(["tag", "-f", BASE_TAG, commit], work)
 
     source_patches = _list_patches(cfg.source_patches)
+    feature_patches = _list_patches(cfg.feature_patches)
+    _check_not_excluded(cfg, work, source_patches + feature_patches)
     if source_patches:
         git.run(["apply", "--index", "--whitespace=nowarn", *map(str, source_patches)], work)
     git.run(["commit", "--quiet", "--allow-empty", "--no-verify", "-m", SOURCES_SUBJECT], work, fixed_date=True)
     git.run(["tag", "-f", SOURCES_TAG, "HEAD"], work)
 
-    feature_patches = _list_patches(cfg.feature_patches)
     if feature_patches:
         proc = git.run(
             ["am", "--quiet", "--3way", "--committer-date-is-author-date", *map(str, feature_patches)],
@@ -97,6 +99,42 @@ def setup(cfg: SourceConfig, work: Path | None = None, *, offline: bool = False,
                 "Resolve the conflict there, run `git am --continue`, then `makepatch src rebuild`."
             )
     return work
+
+
+def sparse_patterns(cfg: SourceConfig) -> str:
+    """Turn ``work-exclude`` (gitignore syntax, upstream root) into non-cone
+    sparse-checkout patterns, which share the syntax with inverted meaning."""
+    lines = ["/*"]
+    for pattern in cfg.work_exclude:
+        pattern = pattern.strip()
+        if not pattern or pattern.startswith("#"):
+            continue
+        lines.append(pattern[1:] if pattern.startswith("!") else f"!{pattern}")
+    return "\n".join(lines) + "\n"
+
+
+def _configure_sparse(cfg: SourceConfig, work: Path) -> None:
+    # Configured by hand instead of `git sparse-checkout set --no-cone`,
+    # which needs a newer git.
+    gitdir = Path(git.out(["rev-parse", "--absolute-git-dir"], work))
+    (gitdir / "info").mkdir(exist_ok=True)
+    (gitdir / "info" / "sparse-checkout").write_text(sparse_patterns(cfg))
+    git.run(["config", "core.sparseCheckout", "true"], work)
+    git.run(["config", "core.sparseCheckoutCone", "false"], work)
+
+
+def _check_not_excluded(cfg: SourceConfig, work: Path, patches: list[Path]) -> None:
+    if not cfg.work_exclude or not patches:
+        return
+    touched: dict[str, Path] = {}
+    for patch in patches:
+        for path in git.patch_paths(patch, work):
+            touched.setdefault(path, patch)
+    listing = git.run(["ls-files", "-t", "-z", "--", *touched], work, env={"GIT_LITERAL_PATHSPECS": "1"}).stdout
+    excluded = [entry[2:] for entry in listing.split("\0") if entry.startswith("S ")]
+    if excluded:
+        details = "\n".join(f"  {path} (patched by {touched[path].name})" for path in excluded)
+        raise MakepatchError(f"patches touch files excluded by work-exclude:\n{details}")
 
 
 def _has_ref(work: Path, ref: str) -> bool:
