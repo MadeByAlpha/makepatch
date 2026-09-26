@@ -1,24 +1,25 @@
 # makepatch
 
-A Git-based patch tool for Python packages that integrates with Hatchling. Inspired by [paperweight](https://github.com/PaperMC/paperweight) and `pnpm patch`.
+A Git-based patch tool for Python packages that integrates with Hatchling.
 
-| Mode | Approach | Output | Patch types |
-| --- | --- | --- | --- |
-| Source patch (`makepatch src`) | paperweight style: fetch an upstream Git repository at a pinned ref and patch it | sdist/wheel of a new package (fork) | source patches, feature patches |
-| Package patch (`makepatch pkg`) | pnpm style: patch installed packages in site-packages | patched virtual environment | source patches |
+*Inspired by [paperweight](https://github.com/PaperMC/paperweight) and `pnpm patch`.*
+
+| Mode | Approach | Output |
+| --- | --- | --- |
+| Source patch (`makepatch src`) | Fetch an upstream Git repository at a pinned ref and patch it | sdist/wheel of a new package (fork) |
+| Package patch (`makepatch pkg`) | Patch installed packages in site-packages | patched virtual environment |
 
 There are two kinds of patches:
 
 - **Source patch**: created with `git diff` and applied with `git apply`. One patch per file.
 - **Feature patch**: created with `git format-patch -p --minimal --zero-commit --no-numbered` and applied with `git am --3way`. One patch per commit; available in source patch mode only.
 
-All patches are applied statically; there is no runtime monkey-patching. Only `git` is used, without patchutils.
+All patches are applied statically; there is no runtime monkey-patching.
 
 ## Requirements
 
-- Python ≥ 3.10
-- git ≥ 2.32 (uses `GIT_CONFIG_GLOBAL`)
-- uv or pip
+- Python &ge; 3.13
+- Git &ge; 2.32
 
 ## Source patch mode
 
@@ -127,20 +128,6 @@ uv run makepatch pkg revert requests   # restore the original files
   - Only on a mismatch does it take the environment lock and do the same work as `pkg apply`.
   - Disable it with `MAKEPATCH_DISABLE_STARTUP=1`.
   - It is skipped when the interpreter runs with `-I` (isolated), as when uv queries an interpreter.
-
-## Using in Vercel builds
-
-The Vercel build image is based on Amazon Linux 2023. `git` is on the list of pre-installed packages, but `uv` is not, so it may need to be installed separately. Rather than relying on the start-up hook during builds, run `pkg apply` explicitly right after installation. If applying fails, the build stops with exit code 1.
-
-```json
-{
-  "installCommand": "uv sync --frozen && uv run makepatch pkg apply"
-}
-```
-
-## Colored output
-
-The CLI colors its output only when writing to a terminal. Set `NO_COLOR=1` to turn colors off, or `FORCE_COLOR=1` to keep them when the output is redirected (e.g. in CI logs). `NO_COLOR` takes precedence.
 
 ## Development
 
