@@ -23,7 +23,7 @@ BASE_TAG = "makepatch/base"
 SOURCES_TAG = "makepatch/sources"
 SOURCES_SUBJECT = "makepatch: source patches"
 
-FORMAT_PATCH_ARGS = ("-p", "--minimal", "--zero-commit")
+FORMAT_PATCH_ARGS = ("-p", "--minimal", "--zero-commit", "--no-numbered")
 DIFF_ARGS = ("--no-color", "--no-ext-diff", "--binary", "--no-renames")
 
 

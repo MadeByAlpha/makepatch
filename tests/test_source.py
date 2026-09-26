@@ -68,6 +68,19 @@ def test_roundtrip_source_and_feature_patches(tmp_path, upstream):
     assert {p: p.read_bytes() for p in cfg.patches_dir.rglob("*.patch")} == before
 
 
+def test_feature_patches_are_not_numbered(tmp_path, upstream):
+    repo, commit = upstream
+    cfg = SourceConfig.load(fork_project(tmp_path, repo, commit))
+    work = workspace.setup(cfg)
+    for subject in ("First feature", "Second feature"):
+        git("commit", "-q", "--allow-empty", "-m", subject, cwd=work)
+    workspace.rebuild(cfg)
+    first = (cfg.feature_patches / "0001-First-feature.patch").read_text()
+    second = (cfg.feature_patches / "0002-Second-feature.patch").read_text()
+    assert "Subject: [PATCH] First feature\n" in first
+    assert "Subject: [PATCH] Second feature\n" in second
+
+
 def test_removed_patches_are_deleted(tmp_path, upstream):
     repo, commit = upstream
     cfg = SourceConfig.load(fork_project(tmp_path, repo, commit))

@@ -10,7 +10,7 @@ A Git-based patch tool for Python packages that integrates with Hatchling. Inspi
 There are two kinds of patches:
 
 - **Source patch**: created with `git diff` and applied with `git apply`. One patch per file.
-- **Feature patch**: created with `git format-patch -p --minimal --zero-commit` and applied with `git am --3way`. One patch per commit; available in source patch mode only.
+- **Feature patch**: created with `git format-patch -p --minimal --zero-commit --no-numbered` and applied with `git am --3way`. One patch per commit; available in source patch mode only.
 
 All patches are applied statically; there is no runtime monkey-patching. Only `git` is used, without patchutils.
 
@@ -137,6 +137,10 @@ The Vercel build image is based on Amazon Linux 2023. `git` is on the list of pr
   "installCommand": "uv sync --frozen && uv run makepatch pkg apply"
 }
 ```
+
+## Colored output
+
+The CLI colors its output only when writing to a terminal. Set `NO_COLOR=1` to turn colors off, or `FORCE_COLOR=1` to keep them when the output is redirected (e.g. in CI logs). `NO_COLOR` takes precedence.
 
 ## Development
 

@@ -9,10 +9,38 @@ from pathlib import Path
 from makepatch import __version__
 from makepatch.config import PackageConfig, SourceConfig, find_project_root
 from makepatch.errors import MakepatchError
+from makepatch.term import paint
+
+# Colors for the actions reported by ``pkg`` commands.
+ACTION_STYLES = {
+    "applied": ("green",),
+    "reapplied": ("green",),
+    "would apply": ("cyan",),
+    "unchanged": ("dim",),
+    "reverted": ("yellow",),
+    "would revert": ("yellow",),
+    "not patched": ("dim",),
+}
 
 
 def _root(args: argparse.Namespace) -> Path:
     return find_project_root(Path(args.project) if args.project else None)
+
+
+def _action(action: str) -> str:
+    return paint(action, *ACTION_STYLES.get(action, ()))
+
+
+def _cmd(command: str) -> str:
+    return paint(f"`{command}`", "cyan")
+
+
+def _err(text: str, *styles: str) -> str:
+    return paint(text, *styles, stream=sys.stderr)
+
+
+def _note(message: str) -> None:
+    print(f"{_err('note:', 'yellow', 'bold')} {message}", file=sys.stderr)
 
 
 def _env(args: argparse.Namespace):
@@ -29,7 +57,7 @@ def cmd_src_apply(args: argparse.Namespace) -> int:
 
     cfg = SourceConfig.load(_root(args))
     work = workspace.setup(cfg, offline=args.offline, force=args.force)
-    print(f"work repository ready: {work}")
+    print(f"{paint('work repository ready:', 'green')} {paint(str(work), 'bold')}")
     return 0
 
 
@@ -38,7 +66,8 @@ def cmd_src_rebuild(args: argparse.Namespace) -> int:
 
     cfg = SourceConfig.load(_root(args))
     sources, features = workspace.rebuild(cfg)
-    print(f"wrote {sources} source patch(es) and {features} feature patch(es)")
+    counts = f"{paint(str(sources), 'bold')} source patch(es) and {paint(str(features), 'bold')} feature patch(es)"
+    print(f"{paint('wrote', 'green')} {counts}")
     return 0
 
 
@@ -47,7 +76,7 @@ def cmd_src_fixup(args: argparse.Namespace) -> int:
 
     cfg = SourceConfig.load(_root(args))
     workspace.fixup(cfg)
-    print("folded changes into the source patch commit; run `makepatch src rebuild` to update patches")
+    print(f"{paint('folded changes into the source patch commit', 'green')}; run {_cmd('makepatch src rebuild')} to update patches")
     return 0
 
 
@@ -56,12 +85,12 @@ def cmd_src_status(args: argparse.Namespace) -> int:
 
     cfg = SourceConfig.load(_root(args))
     st = workspace.status(cfg)
-    print(f"upstream:      {cfg.upstream} @ {cfg.ref} ({st.base[:12]})")
-    print(f"source files:  {st.source_files}")
-    print(f"feature commits: {st.features}")
-    print(f"dirty:         {'yes' if st.dirty else 'no'}")
+    print(f"{paint('upstream:', 'bold')}        {cfg.upstream} @ {paint(cfg.ref, 'cyan')} {paint(f'({st.base[:12]})', 'dim')}")
+    print(f"{paint('source files:', 'bold')}    {st.source_files}")
+    print(f"{paint('feature commits:', 'bold')} {st.features}")
+    print(f"{paint('dirty:', 'bold')}           {paint('yes', 'yellow') if st.dirty else paint('no', 'green')}")
     if st.in_progress:
-        print(f"in progress:   {st.in_progress}")
+        print(f"{paint('in progress:', 'bold')}     {paint(st.in_progress, 'yellow', 'bold')}")
     return 0
 
 
@@ -73,7 +102,7 @@ def cmd_pkg_edit(args: argparse.Namespace) -> int:
 
     cfg = PackageConfig.load(_root(args))
     path = edit.edit(cfg, _env(args), args.package, force=args.force)
-    print(f"edit the files in {path}, then run `makepatch pkg commit {args.package}`")
+    print(f"edit the files in {paint(str(path), 'bold')}, then run {_cmd(f'makepatch pkg commit {args.package}')}")
     return 0
 
 
@@ -83,9 +112,10 @@ def cmd_pkg_commit(args: argparse.Namespace) -> int:
     cfg = PackageConfig.load(_root(args))
     patch, action = edit.commit(cfg, _env(args), args.package, keep=args.keep)
     if patch is None:
-        print(f"no changes; {args.package}: {action}")
+        print(f"no changes; {paint(args.package, 'bold')}: {_action(action)}")
     else:
-        print(f"wrote {patch.relative_to(cfg.root)}; {args.package}: {action}")
+        wrote = paint(str(patch.relative_to(cfg.root)), "bold")
+        print(f"{paint('wrote', 'green')} {wrote}; {paint(args.package, 'bold')}: {_action(action)}")
     return 0
 
 
@@ -94,9 +124,9 @@ def _print_results(results) -> int:
     for r in results:
         if r.error:
             failed += 1
-            print(f"{r.key}: failed: {r.error}", file=sys.stderr)
+            print(f"{_err(r.key, 'bold')}: {_err('failed:', 'red', 'bold')} {r.error}", file=sys.stderr)
         else:
-            print(f"{r.key}: {r.action}")
+            print(f"{paint(r.key, 'bold')}: {_action(r.action)}")
     return 1 if failed else 0
 
 
@@ -118,9 +148,9 @@ def cmd_pkg_revert(args: argparse.Namespace) -> int:
         dist = env.find(args.package)
         done = revert(dist)
         write_state(cfg, env)
-    print(f"{dist.key}: {'reverted' if done else 'not patched'}")
+    print(f"{paint(dist.key, 'bold')}: {_action('reverted' if done else 'not patched')}")
     if done:
-        print("note: the start-up hook re-applies it unless the patch file is removed", file=sys.stderr)
+        _note("the start-up hook re-applies it unless the patch file is removed")
     return 0
 
 
@@ -133,24 +163,24 @@ def cmd_pkg_status(args: argparse.Namespace) -> int:
     dists = {d.key: d for d in env.distributions()}
     keys = sorted(set(patches) | {k for k, d in dists.items() if d.marker()})
     if not keys:
-        print("no package patches")
+        print(paint("no package patches", "dim"))
     for key in keys:
         patch, dist = patches.get(key), dists.get(key)
         if dist is None:
-            state = "not installed"
+            state = paint("not installed", "red")
         elif patch is None:
-            state = "patched, but the patch file is gone"
+            state = paint("patched, but the patch file is gone", "red")
         elif dist.version != patch.version:
-            state = f"version mismatch (installed {dist.version})"
+            state = paint(f"version mismatch (installed {dist.version})", "red")
         else:
             marker = dist.marker()
             if marker is None:
-                state = "not applied"
+                state = paint("not applied", "yellow")
             elif marker.get("sha256") != patch.sha256:
-                state = "outdated"
+                state = paint("outdated", "yellow")
             else:
-                state = "applied"
-        print(f"{patch.path.name if patch else key}: {state}")
+                state = paint("applied", "green")
+        print(f"{paint(patch.path.name if patch else key, 'bold')}: {state}")
     return 0
 
 
@@ -200,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args)
     except MakepatchError as exc:
-        print(f"makepatch: error: {exc}", file=sys.stderr)
+        print(f"{_err('makepatch: error:', 'red', 'bold')} {exc}", file=sys.stderr)
         return 1
 
 
