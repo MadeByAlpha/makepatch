@@ -4,12 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "makepatch"
-version = "0.1.0"
+version = "0.3.0"
 description = "Git-based patch tool for Python packages: source forks (paperweight-style) and installed-package patches (pnpm-style)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
-    "tomli>=1.1; python_version < '3.11'",
 ]
 classifiers = [
     "Framework :: Hatch",
