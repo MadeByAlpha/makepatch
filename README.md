@@ -1,136 +1,136 @@
 # makepatch
 
-Hatchling과 연동하는 Git 기반 Python 패키지 패치 도구입니다. [paperweight](https://github.com/PaperMC/paperweight)와 `pnpm patch`에서 영감을 받았습니다.
+A Git-based patch tool for Python packages that integrates with Hatchling. Inspired by [paperweight](https://github.com/PaperMC/paperweight) and `pnpm patch`.
 
-| 모드 | 방식 | 결과물 | 사용 가능한 패치 종류 |
+| Mode | Approach | Output | Patch types |
 | --- | --- | --- | --- |
-| 소스 패치 (`makepatch src`) | paperweight 방식: upstream Git 저장소를 고정 ref로 가져와 패치 | 새 패키지(포크)의 sdist/wheel | 소스 패치, 기능 패치 |
-| 패키지 패치 (`makepatch pkg`) | pnpm 방식: 설치된 패키지를 site-packages에서 패치 | 패치된 가상 환경 | 소스 패치 |
+| Source patch (`makepatch src`) | paperweight style: fetch an upstream Git repository at a pinned ref and patch it | sdist/wheel of a new package (fork) | source patches, feature patches |
+| Package patch (`makepatch pkg`) | pnpm style: patch installed packages in site-packages | patched virtual environment | source patches |
 
-패치 종류는 다음 두 가지입니다.
+There are two kinds of patches:
 
-- **소스 패치**: `git diff`로 만들고 `git apply`로 적용합니다. 파일 하나당 패치 하나입니다.
-- **기능 패치**: `git format-patch -p --minimal --zero-commit`으로 만들고 `git am --3way`로 적용합니다. 커밋 하나당 패치 하나이며, 소스 패치 모드에서만 사용할 수 있습니다.
+- **Source patch**: created with `git diff` and applied with `git apply`. One patch per file.
+- **Feature patch**: created with `git format-patch -p --minimal --zero-commit` and applied with `git am --3way`. One patch per commit; available in source patch mode only.
 
-모든 패치는 정적으로 적용되며, 런타임 monkey-patching은 하지 않습니다. patchutils 없이 `git`만 사용합니다.
+All patches are applied statically; there is no runtime monkey-patching. Only `git` is used, without patchutils.
 
-## 요구 사항
+## Requirements
 
 - Python ≥ 3.10
-- git ≥ 2.32 (`GIT_CONFIG_GLOBAL` 사용)
-- uv 또는 pip
+- git ≥ 2.32 (uses `GIT_CONFIG_GLOBAL`)
+- uv or pip
 
-## 소스 패치 모드
+## Source patch mode
 
-포크 저장소에는 `pyproject.toml`과 `patches/`만 있으면 됩니다.
+A fork repository needs only `pyproject.toml` and `patches/`.
 
 ```toml
 [build-system]
 requires = ["hatchling", "makepatch"]
 build-backend = "hatchling.build"
 
-[project]            # 포크 패키지의 메타데이터는 직접 정의합니다.
+[project]            # Define the fork's metadata yourself.
 name = "requests-fork"
 version = "2.32.3.post1"
 dependencies = ["urllib3>=1.21.1,<3", "idna>=2.5,<4", "charset_normalizer>=2,<4", "certifi>=2017.4.17"]
 
 [tool.makepatch.source]
 upstream = "https://github.com/psf/requests.git"
-ref = "v2.32.3"                           # 커밋 SHA(40자리) 권장, 태그·브랜치 가능
-include = { "src/requests" = "requests" } # upstream 경로 → wheel 경로
-exclude = ["**/*.pyi"]                    # sdist/wheel에서 제외 (include 경로 기준)
-work-exclude = ["docs/", "tests/"]        # work/·빌드 트리에서 제외 (upstream 루트 기준)
-# work-dir = "work"                       # 기본값
-# patches-dir = "patches"                 # 기본값
+ref = "v2.32.3"                           # a 40-digit commit SHA is recommended; tags and branches work too
+include = { "src/requests" = "requests" } # upstream path → wheel path
+exclude = ["**/*.pyi"]                    # excluded from sdist/wheel (relative to include paths)
+work-exclude = ["docs/", "tests/"]        # excluded from work/ and the build tree (relative to the upstream root)
+# work-dir = "work"                       # default
+# patches-dir = "patches"                 # default
 
-[tool.hatch.build.hooks.makepatch]        # 빌드 훅 활성화 (설정은 위 테이블에 둡니다)
+[tool.hatch.build.hooks.makepatch]        # enables the build hook (settings live in the table above)
 
 [tool.hatch.build.targets.wheel]
 bypass-selection = true
 ```
 
-`.gitignore`에는 `work/`와 `.makepatch/`를 추가하십시오. sdist에서 제외하기 위해서입니다.
+Add `work/` and `.makepatch/` to `.gitignore` so that they are excluded from the sdist.
 
-### 파일 제외
+### Excluding files
 
-두 옵션 모두 gitignore 문법(`!` 부정 포함)을 사용하지만, 기준 경로와 효과가 다릅니다.
+Both options use gitignore syntax (including `!` negation), but differ in base path and effect.
 
-| 옵션 | 기준 경로 | 효과 |
+| Option | Base path | Effect |
 | --- | --- | --- |
-| `exclude` | 각 `include` 경로 (예: `src/requests`) | sdist와 wheel에서 제외합니다. `work/`에는 그대로 있습니다. |
-| `work-exclude` | upstream 루트 | `git sparse-checkout`으로 `work/`와 빌드 트리에 체크아웃하지 않습니다. 시간과 용량을 줄이는 용도입니다. |
+| `exclude` | each `include` path (e.g. `src/requests`) | Excluded from the sdist and wheel. Still present in `work/`. |
+| `work-exclude` | upstream root | Not checked out into `work/` or the build tree, via `git sparse-checkout`. Meant to save time and disk space. |
 
-- `work-exclude`로 제외한 파일에 패치가 있으면 `makepatch src setup`과 빌드가 오류로 중단됩니다.
-- `work-exclude`를 바꾼 뒤에는 `makepatch src setup`을 다시 실행하십시오.
+- If a patch touches a file excluded by `work-exclude`, `makepatch src apply` and the build stop with an error.
+- After changing `work-exclude`, run `makepatch src apply` again.
 
-### 작업 흐름
+### Workflow
 
 ```sh
-makepatch src setup     # upstream fetch → work/ 생성 → 소스 패치 적용 → 기능 패치 git am
-# work/에서 파일 수정
-makepatch src fixup     # 작업 트리 변경을 소스 패치 커밋에 흡수
-# 또는 work/에서 일반 커밋 → 기능 패치
-makepatch src rebuild   # patches/sources/**, patches/features/*.patch 재생성
+makepatch src apply     # fetch upstream → create work/ → apply source patches → git am feature patches
+# edit files in work/
+makepatch src fixup     # fold working tree changes into the source patch commit
+# or make regular commits in work/ → feature patches
+makepatch src rebuild   # regenerate patches/sources/** and patches/features/*.patch
 makepatch src status
 ```
 
-`work/` 저장소의 구조는 다음과 같습니다.
+The `work/` repository is laid out as follows:
 
 ```
 <upstream ref>                 tag makepatch/base
-makepatch: source patches      tag makepatch/sources   ← patches/sources/<경로>.patch
-<기능 커밋> ...                                          ← patches/features/NNNN-*.patch
+makepatch: source patches      tag makepatch/sources   ← patches/sources/<path>.patch
+<feature commits> ...                                  ← patches/features/NNNN-*.patch
 ```
 
-기능 패치 적용이 충돌하면 `git am` 세션이 남습니다. `work/`에서 충돌을 해결하고 `git am --continue`를 실행한 뒤 `makepatch src rebuild`를 실행하십시오.
+If a feature patch conflicts, the `git am` session is left in place. Resolve the conflict in `work/`, run `git am --continue`, then run `makepatch src rebuild`.
 
-### 빌드
+### Building
 
 ```sh
 uv build
 ```
 
-- 빌드 훅은 `work/`를 사용하지 않고 `.makepatch/build/tree`에 패치를 새로 적용합니다. 따라서 커밋하지 않은 작업은 결과물에 섞이지 않습니다.
-- sdist에는 패치가 적용된 소스(`_makepatch/tree/`)가 들어갑니다. sdist에서 wheel을 빌드할 때는 git도 네트워크도 필요하지 않습니다.
-- `MAKEPATCH_OFFLINE=1`을 설정하면 `.makepatch/upstream.git` 캐시만 사용합니다.
-- upstream의 자체 빌드 단계(C 확장 등)는 실행하지 않습니다. 순수 Python 소스가 대상입니다.
+- The build hook does not use `work/`; it applies the patches afresh in `.makepatch/build/tree`. Uncommitted work therefore never leaks into the output.
+- The sdist contains the patched sources (`_makepatch/tree/`). Building a wheel from the sdist needs neither git nor network access.
+- Set `MAKEPATCH_OFFLINE=1` to use only the `.makepatch/upstream.git` cache.
+- Upstream's own build steps (C extensions, etc.) are not run. Pure Python sources are the target.
 
-## 패키지 패치 모드
+## Package patch mode
 
-makepatch를 프로젝트의 개발 의존성으로 설치합니다.
+Install makepatch as a development dependency of the project.
 
 ```sh
 uv add --dev makepatch
 ```
 
 ```sh
-uv run makepatch pkg edit requests     # .makepatch/edit/requests@2.32.3/ 에 편집용 사본 생성
-# 사본의 파일 수정
-uv run makepatch pkg commit requests   # patches/packages/requests@2.32.3.patch 저장 후 적용
-uv run makepatch pkg apply             # 모든 패치 적용 (--check: 적용 가능 여부만 확인)
+uv run makepatch pkg edit requests     # create an editable copy in .makepatch/edit/requests@2.32.3/
+# edit files in the copy
+uv run makepatch pkg commit requests   # save patches/packages/requests@2.32.3.patch and apply it
+uv run makepatch pkg apply             # apply every patch (--check: only check that they apply)
 uv run makepatch pkg status
-uv run makepatch pkg revert requests   # 원본 파일로 복원
+uv run makepatch pkg revert requests   # restore the original files
 ```
 
-- 패치 파일 이름은 `<정규화된 이름>@<버전>.patch`이고, 경로는 site-packages 기준입니다. 설치된 버전이 다르면 오류가 발생합니다.
-- 패치 파일을 삭제하고 `pkg apply`를 실행하면 해당 패키지가 원본으로 복원됩니다.
-- 패치 디렉터리는 `[tool.makepatch.packages] patches-dir`로 바꿀 수 있습니다.
-- `--python <인터프리터>`로 다른 환경을 대상으로 지정할 수 있습니다.
-- editable 설치는 대상이 아닙니다. 소스를 직접 수정하십시오.
+- Patch files are named `<normalized name>@<version>.patch`, with paths relative to site-packages. An error is raised if the installed version differs.
+- Deleting a patch file and running `pkg apply` restores that package to its original state.
+- The patch directory can be changed with `[tool.makepatch.packages] patches-dir`.
+- `--python <interpreter>` targets a different environment.
+- Editable installs are not supported; edit their sources directly.
 
-### uv와의 호환성
+### Compatibility with uv
 
-- **캐시 보호**: uv는 Linux에서 기본적으로 캐시의 파일을 hardlink로 설치합니다(`--link-mode`로 clone·copy·symlink 선택 가능). makepatch는 파일을 제자리에서 수정하지 않습니다. 변경할 파일을 임시 디렉터리에서 `git apply`한 뒤 `os.replace`로 교체하므로, 교체된 경로만 새 inode를 갖고 uv 캐시는 변경되지 않습니다. symlink 모드에서도 같습니다.
-- **기록**: `RECORD`의 해시를 갱신하고, 적용 기록(`makepatch.json`, `makepatch.patch`)을 dist-info에 남겨 `RECORD`에 등록합니다. 패키지를 제거하면 함께 삭제됩니다.
-- **재설치 복구**: `uv sync`는 설치된 파일의 내용을 검사하지 않으므로 패치가 유지됩니다. 재설치나 버전 변경으로 패치가 사라지면, makepatch가 설치하는 `makepatch-startup.pth`가 인터프리터 시작 시 이를 감지해 다시 적용합니다.
-  - 평소에는 패치 파일과 마커의 해시만 비교합니다.
-  - 불일치가 있을 때만 환경 잠금을 잡고 `pkg apply`와 같은 작업을 수행합니다.
-  - `MAKEPATCH_DISABLE_STARTUP=1`로 끌 수 있습니다.
-  - uv가 인터프리터를 조회할 때처럼 `-I`(isolated)로 실행되면 건너뜁니다.
+- **Cache protection**: on Linux, uv installs files from its cache as hardlinks by default (`--link-mode` selects clone, copy or symlink instead). makepatch never modifies files in place: it runs `git apply` on the affected files in a temporary directory and swaps them in with `os.replace`. Only the replaced paths get new inodes, so the uv cache stays untouched. The same holds in symlink mode.
+- **Records**: the hashes in `RECORD` are updated, and the applied state (`makepatch.json`, `makepatch.patch`) is written into the dist-info and registered in `RECORD`, so it is removed together with the package.
+- **Recovery after reinstall**: `uv sync` does not inspect the contents of installed files, so patches persist. If a reinstall or version change drops a patch, the `makepatch-startup.pth` installed by makepatch detects this at interpreter start-up and re-applies it.
+  - Normally it only compares the hashes of the patch files and markers.
+  - Only on a mismatch does it take the environment lock and do the same work as `pkg apply`.
+  - Disable it with `MAKEPATCH_DISABLE_STARTUP=1`.
+  - It is skipped when the interpreter runs with `-I` (isolated), as when uv queries an interpreter.
 
-## Vercel 빌드에서 사용
+## Using in Vercel builds
 
-Vercel 빌드 이미지는 Amazon Linux 2023 기반입니다. `git`은 사전 설치 패키지 목록에 있지만, `uv`는 목록에 없으므로 별도 설치가 필요할 수 있습니다. 빌드 단계에서는 시작 훅에 의존하지 말고, 설치 직후 `pkg apply`를 명시적으로 실행하는 것을 권장합니다. 적용에 실패하면 종료 코드 1로 빌드가 중단됩니다.
+The Vercel build image is based on Amazon Linux 2023. `git` is on the list of pre-installed packages, but `uv` is not, so it may need to be installed separately. Rather than relying on the start-up hook during builds, run `pkg apply` explicitly right after installation. If applying fails, the build stops with exit code 1.
 
 ```json
 {
@@ -138,7 +138,7 @@ Vercel 빌드 이미지는 Amazon Linux 2023 기반입니다. `git`은 사전 �
 }
 ```
 
-## 개발
+## Development
 
 ```sh
 uv sync

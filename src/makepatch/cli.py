@@ -24,7 +24,7 @@ def _env(args: argparse.Namespace):
 # -- src -------------------------------------------------------------------------------
 
 
-def cmd_src_setup(args: argparse.Namespace) -> int:
+def cmd_src_apply(args: argparse.Namespace) -> int:
     from makepatch.source import workspace
 
     cfg = SourceConfig.load(_root(args))
@@ -162,10 +162,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     src = modes.add_parser("src", help="source patch mode (fork an upstream git repository)")
     src_cmds = src.add_subparsers(dest="command", required=True)
-    p = src_cmds.add_parser("setup", help="create the work repository and apply all patches")
+    p = src_cmds.add_parser("apply", help="create the work repository and apply all patches")
     p.add_argument("--offline", action="store_true", help="use the cached upstream only")
     p.add_argument("--force", action="store_true", help="discard unsaved work in the work repository")
-    p.set_defaults(func=cmd_src_setup)
+    p.set_defaults(func=cmd_src_apply)
     p = src_cmds.add_parser("rebuild", help="regenerate patches from the work repository")
     p.set_defaults(func=cmd_src_rebuild)
     p = src_cmds.add_parser("fixup", help="fold working tree changes into the source patches")

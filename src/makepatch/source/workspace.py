@@ -152,7 +152,7 @@ def _abort_in_progress(work: Path) -> None:
 def _sources_commit(work: Path) -> str:
     """Locate the source-patch commit (first commit after base) and re-tag it."""
     if not _has_ref(work, BASE_TAG):
-        raise MakepatchError(f"{work} is not set up; run `makepatch src setup`")
+        raise MakepatchError(f"{work} is not set up; run `makepatch src apply`")
     first = git.out(["rev-list", "--reverse", "--first-parent", f"{BASE_TAG}..HEAD"], work).splitlines()
     if not first:
         raise MakepatchError(f"the '{SOURCES_SUBJECT}' commit is missing from {work}")
@@ -168,7 +168,7 @@ def _sources_commit(work: Path) -> str:
 
 def _require_clean(work: Path) -> None:
     if not (work / ".git").exists():
-        raise MakepatchError(f"{work} is not set up; run `makepatch src setup`")
+        raise MakepatchError(f"{work} is not set up; run `makepatch src apply`")
     state = _in_progress(work)
     if state:
         raise MakepatchError(f"finish the pending {state} in {work} first")
@@ -224,7 +224,7 @@ def fixup(cfg: SourceConfig, work: Path | None = None) -> None:
     """Fold the current working tree changes into the source-patch commit."""
     work = work or cfg.work_dir
     if not (work / ".git").exists():
-        raise MakepatchError(f"{work} is not set up; run `makepatch src setup`")
+        raise MakepatchError(f"{work} is not set up; run `makepatch src apply`")
     state = _in_progress(work)
     if state:
         raise MakepatchError(f"finish the pending {state} in {work} first")
@@ -260,7 +260,7 @@ class Status:
 def status(cfg: SourceConfig, work: Path | None = None) -> Status:
     work = work or cfg.work_dir
     if not (work / ".git").exists() or not _has_ref(work, BASE_TAG):
-        raise MakepatchError(f"{work} is not set up; run `makepatch src setup`")
+        raise MakepatchError(f"{work} is not set up; run `makepatch src apply`")
     in_progress = _in_progress(work)
     sources = _sources_commit(work) if not in_progress else git.out(["rev-parse", SOURCES_TAG], work)
     files = git.out(["diff", "--name-only", "--no-renames", BASE_TAG, sources], work).splitlines()
